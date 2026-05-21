@@ -10,3 +10,4 @@
     ./install.sh
 
 Windows 可使用 install.ps1。
+# ai-cli-installer
