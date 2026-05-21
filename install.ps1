@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
-$Version = "1.0.0"
+$Version = "1.0.1"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TemplateDir = Join-Path $ScriptDir "templates"
 
@@ -12,6 +12,7 @@ $NpmMirror = if ($env:AI_CLI_NPM_REGISTRY) { $env:AI_CLI_NPM_REGISTRY } else { "
 $NpmOfficial = "https://registry.npmjs.org"
 $OpencodeInstall = "https://opencode.ai/install"
 $script:LastInstallSource = ""
+$script:OpenspecInstallSource = ""
 
 function Write-Log([string]$Msg) {
     Write-Host ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $Msg)
@@ -74,6 +75,25 @@ function Install-Qwen([string]$Net) {
         }
         default { throw "Invalid network" }
     }
+}
+
+function Install-Openspec([string]$Net) {
+    if (-not (Test-Command "npm")) {
+        Write-Log "WARN: npm not found, skip OpenSpec"
+        return
+    }
+    switch ($Net) {
+        "1" { Install-NpmGlobal "@fission-ai/openspec@latest" $NpmMirror; $script:OpenspecInstallSource = "openspec-npm:$NpmMirror" }
+        "2" { Install-NpmGlobal "@fission-ai/openspec@latest" $NpmOfficial; $script:OpenspecInstallSource = "openspec-npm:$NpmOfficial" }
+        "3" {
+            $reg = if ($env:AI_CLI_NPM_REGISTRY) { $env:AI_CLI_NPM_REGISTRY } else { $NpmMirror }
+            Install-NpmGlobal "@fission-ai/openspec@latest" $reg
+            $script:OpenspecInstallSource = "openspec-npm:$reg"
+        }
+        default { throw "Invalid network" }
+    }
+    if (-not (Test-Command "openspec")) { throw "openspec not in PATH" }
+    Write-Log "OpenSpec installed"
 }
 
 function Install-Opencode([string]$Net) {
@@ -190,5 +210,10 @@ if ($tool -eq "2") {
 }
 
 Write-Host ""
+Write-Log "Installing OpenSpec (after key setup)..."
+try { Install-Openspec $net } catch { Write-Log "WARN: OpenSpec install failed: $_" }
+
+Write-Host ""
 Write-Host "Source: $script:LastInstallSource"
-Write-Host "Done."
+if ($script:OpenspecInstallSource) { Write-Host "OpenSpec: $($script:OpenspecInstallSource)" }
+Write-Host "Done (v$Version)."

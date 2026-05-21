@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION=1.0.0
+VERSION="1.0.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 SCRIPTS_DIR="${SCRIPT_DIR}/scripts"
@@ -17,6 +17,7 @@ CURL_TIMEOUT=30
 CURL_RETRIES=2
 
 LAST_INSTALL_SOURCE=""
+OPENSPEC_INSTALL_SOURCE=""
 
 log() {
   printf "[%s] %s\n" "$(date +%H:%M:%S)" "$*"
@@ -191,6 +192,34 @@ install_opencode_curl() {
   LAST_INSTALL_SOURCE="opencode-curl:${OPENCODE_INSTALL}"
 }
 
+install_openspec() {
+  local net="$1"
+  command_exists npm || { log "WARN: npm not found, skip OpenSpec"; return 1; }
+  local major
+  major="$(node_major_version)"
+  if [[ "$major" -lt 20 ]]; then
+    log "WARN: Node $(node -v 2>/dev/null || echo unknown) < 20, OpenSpec may fail"
+  fi
+  case "$net" in
+    1)
+      npm_install_global "@fission-ai/openspec@latest" "$NPM_MIRROR" || return 1
+      OPENSPEC_INSTALL_SOURCE="openspec-npm:${NPM_MIRROR}"
+      ;;
+    2)
+      npm_install_global "@fission-ai/openspec@latest" "$NPM_OFFICIAL" || return 1
+      OPENSPEC_INSTALL_SOURCE="openspec-npm:${NPM_OFFICIAL}"
+      ;;
+    3)
+      local reg="${AI_CLI_NPM_REGISTRY:-$NPM_MIRROR}"
+      npm_install_global "@fission-ai/openspec@latest" "$reg" || return 1
+      OPENSPEC_INSTALL_SOURCE="openspec-npm:${reg}"
+      ;;
+    *) die "Invalid network choice: $net" ;;
+  esac
+  verify_cli openspec || return 1
+  log "OpenSpec installed: $(openspec --version 2>/dev/null || echo unknown)"
+}
+
 install_opencode() {
   local net="$1"
   case "$net" in
@@ -325,6 +354,13 @@ print_summary() {
     echo "Verify: opencode --version"
     echo "Docs: https://dev.opencode.ai/docs/config/"
   fi
+  if [[ -n "${OPENSPEC_INSTALL_SOURCE:-}" ]]; then
+    echo "OpenSpec: installed (${OPENSPEC_INSTALL_SOURCE})"
+    echo "OpenSpec verify: openspec --version"
+    echo "OpenSpec init (in project): openspec init"
+  else
+    echo "OpenSpec: not installed"
+  fi
   echo "PATH hint: export PATH=\"${NPM_USER_PREFIX}/bin:\\$PATH\""
   echo "Done."
 }
@@ -410,6 +446,14 @@ main() {
     key="$(read_secret "Enter API Key")"
     [[ -n "$key" ]] || die "API Key empty"
     setup_opencode_config "$key" "$prov"
+  fi
+
+  echo ""
+  log "Installing OpenSpec (after key setup)..."
+  if install_openspec "$net"; then
+    log "OpenSpec ready"
+  else
+    log "WARN: OpenSpec install failed (optional, retry: npm install -g @fission-ai/openspec@latest)"
   fi
 
   print_summary "$tool" "$cli"
